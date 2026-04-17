@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "module": "commonjs",
+    "target": "ES2021",
+    "lib": [
+      "ES2021"
+    ],
+    "moduleResolution": "node",
+    "strict": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
+  },
+  "include": [
+    "sources/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}
