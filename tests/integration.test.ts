@@ -243,4 +243,40 @@ describe(`yarn-plugin-min-versions`, () => {
       await registry.stop();
     }
   });
+
+  test(`check reports incompatible floors without an internal stacktrace`, async () => {
+    const registry = new MockRegistry(packageFixtures);
+    await registry.start();
+    try {
+      const project = await createProject(registry, {
+        dependencies: {
+          'foo-tilde': `1.0.0`,
+        },
+      });
+
+      const initialInstall = await runYarn(project, [`install`]);
+      expect(initialInstall.code, `${initialInstall.stdout}\n${initialInstall.stderr}`).toBe(0);
+
+      await writeFile(path.join(project, `package.json`), `${JSON.stringify({
+        name: `fixture-project`,
+        version: `1.0.0`,
+        private: true,
+        packageManager: `yarn@4.14.1`,
+        dependencies: {
+          'foo-tilde': `1.0.0`,
+        },
+        minVersions: {
+          dep: `1.1.0`,
+        },
+      }, null, 2)}\n`);
+
+      const check = await runYarn(project, [`min-versions`, `check`]);
+      expect(check.code).not.toBe(0);
+      expect(check.stdout).toContain(`cannot be intersected with >=1.1.0`);
+      expect(check.stdout).not.toContain(`Internal Error:`);
+      expect(check.stdout).not.toContain(`plugin-min-versions.js:`);
+    } finally {
+      await registry.stop();
+    }
+  });
 });

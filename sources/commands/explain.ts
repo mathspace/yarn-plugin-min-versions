@@ -3,6 +3,7 @@ import {Configuration, Project, structUtils} from '@yarnpkg/core';
 import {Command, Option, UsageError} from 'clipanion';
 import {assertValidPolicy, inspectPolicy} from '../policy';
 import {analyzeProject} from '../report';
+import {reportCommandError} from './reportUtils';
 
 export default class MinVersionsExplainCommand extends BaseCommand {
   static override paths = [
@@ -27,8 +28,14 @@ export default class MinVersionsExplainCommand extends BaseCommand {
 
   override async execute() {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
-    const {project} = await Project.find(configuration, this.context.cwd);
-    await project.restoreInstallState();
+    let project: Project;
+
+    try {
+      ({project} = await Project.find(configuration, this.context.cwd));
+      await project.restoreInstallState();
+    } catch (error) {
+      return await reportCommandError(configuration, this.context.stdout, error);
+    }
 
     const policy = inspectPolicy(project);
     const errors = policy.problems.filter(problem => problem.level === `error`);

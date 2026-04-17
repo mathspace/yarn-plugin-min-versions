@@ -3,6 +3,7 @@ import {Configuration, MessageName, Project, StreamReport} from '@yarnpkg/core';
 import {Command} from 'clipanion';
 import {getPolicyWarnings, inspectPolicy} from '../policy';
 import {analyzeProject} from '../report';
+import {reportCommandError} from './reportUtils';
 
 const failingStatuses = new Set([
   `rewrite-needed`,
@@ -33,8 +34,14 @@ export default class MinVersionsCheckCommand extends BaseCommand {
 
   override async execute() {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
-    const {project} = await Project.find(configuration, this.context.cwd);
-    await project.restoreInstallState();
+    let project: Project;
+
+    try {
+      ({project} = await Project.find(configuration, this.context.cwd));
+      await project.restoreInstallState();
+    } catch (error) {
+      return await reportCommandError(configuration, this.context.stdout, error);
+    }
 
     const policy = inspectPolicy(project);
     const report = await StreamReport.start({
