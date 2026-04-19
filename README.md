@@ -16,11 +16,11 @@ Add a root-only `minVersions` field to `package.json`:
 }
 ```
 
-Then import the built plugin bundle from `.yarnrc.yml`:
+Then import the built plugin bundle so Yarn copies it into your repository and
+updates `.yarnrc.yml`:
 
-```yaml
-plugins:
-  - path: ./.yarn/plugins/@yarnpkg/plugin-min-versions.js
+```sh
+yarn plugin import ./bundles/@yarnpkg/plugin-min-versions.js
 ```
 
 On `yarn install`, the plugin:
@@ -84,3 +84,26 @@ npm test
 The bundled plugin artifact is produced at:
 
 `bundles/@yarnpkg/plugin-min-versions.js`
+
+## GitHub Releases
+
+This repository includes a GitHub Actions workflow that publishes a bundled
+plugin asset when you push a tag matching `v*`.
+
+The workflow:
+
+- runs on tag pushes such as `v0.1.0`
+- installs dependencies with `npm ci`
+- builds and verifies the plugin with `npm test`
+- uploads a release asset named `plugin-min-versions.js`
+
+After the repository is public, consumers can install a released bundle with:
+
+```sh
+yarn plugin import https://github.com/<owner>/<repo>/releases/download/v0.1.0/plugin-min-versions.js
+```
+
+Yarn will download the asset, copy it into the project-local plugin directory,
+and write the corresponding local `plugins:` entry into `.yarnrc.yml`. The
+release asset URL is the supported remote installation source; the final
+`.yarnrc.yml` entry remains a local file path managed by Yarn.
