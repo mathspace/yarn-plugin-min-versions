@@ -53,6 +53,29 @@ const packageFixtures = [
       },
     ],
   },
+  {
+    name: `peer-host`,
+    versions: [
+      {version: `1.0.0`},
+    ],
+  },
+  {
+    name: `peer-dep`,
+    versions: [
+      {
+        version: `1.0.0`,
+        peerDependencies: {
+          'peer-host': `*`,
+        },
+      },
+      {
+        version: `1.1.0`,
+        peerDependencies: {
+          'peer-host': `*`,
+        },
+      },
+    ],
+  },
 ];
 
 const tempRoots: Array<string> = [];
@@ -218,6 +241,38 @@ describe(`yarn-plugin-min-versions`, () => {
       expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
       expect(explain.stdout).toContain(`[covered-by-higher-resolution]`);
       expect(explain.stdout).toContain(`current resolution dep@npm:1.9.0`);
+    } finally {
+      await registry.stop();
+    }
+  });
+
+  test(`check supports virtualized descriptors created by peer dependencies`, async () => {
+    const registry = new MockRegistry(packageFixtures);
+    await registry.start();
+    try {
+      const project = await createProject(registry, {
+        dependencies: {
+          'peer-dep': `^1.0.0`,
+          'peer-host': `1.0.0`,
+        },
+        minVersions: {
+          'peer-dep': `1.1.0`,
+        },
+      });
+
+      const install = await runYarn(project, [`install`]);
+      expect(install.code, `${install.stdout}\n${install.stderr}`).toBe(0);
+      expect(await readInstalledVersion(project, `peer-dep`)).toBe(`1.1.0`);
+
+      const check = await runYarn(project, [`min-versions`, `check`]);
+      expect(check.code, `${check.stdout}\n${check.stderr}`).toBe(0);
+      expect(check.stdout).toContain(`All 1 minVersions floor is currently satisfied`);
+      expect(check.stdout).not.toContain(`unsupported descriptor`);
+
+      const explain = await runYarn(project, [`min-versions`, `explain`, `peer-dep`]);
+      expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
+      expect(explain.stdout).toContain(`peer-dep@virtual:`);
+      expect(explain.stdout).toContain(`[satisfied]`);
     } finally {
       await registry.stop();
     }

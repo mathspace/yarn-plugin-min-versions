@@ -3,6 +3,23 @@ import * as semver from 'semver';
 import {MIN_VERSION_PROTOCOL} from './constants';
 import type {DependencySupport, MinVersionFloor, RangeEvaluation, SupportedDependencyRange} from './types';
 
+function normalizeDependencyRange(range: string) {
+  let parsed = structUtils.parseRange(range);
+
+  // Yarn peer virtualization wraps the original range in a transport-only
+  // `virtual:` envelope. The underlying selector still determines whether the
+  // dependency can be reasoned about by the plugin.
+  while (parsed.protocol === `virtual:`) {
+    const next = structUtils.parseRange(parsed.selector);
+    parsed = {
+      ...next,
+      params: next.params ?? parsed.params,
+    };
+  }
+
+  return parsed;
+}
+
 function makeSupportedRange(range: SupportedDependencyRange): DependencySupport {
   return {
     status: `supported`,
@@ -11,7 +28,7 @@ function makeSupportedRange(range: SupportedDependencyRange): DependencySupport 
 }
 
 export function describeDependencySupport(dependency: Descriptor): DependencySupport {
-  const parsed = structUtils.parseRange(dependency.range);
+  const parsed = normalizeDependencyRange(dependency.range);
 
   if (parsed.protocol !== null && parsed.protocol !== `npm:`) {
     if (parsed.protocol !== MIN_VERSION_PROTOCOL) {

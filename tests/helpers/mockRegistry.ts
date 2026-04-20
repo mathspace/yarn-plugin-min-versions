@@ -6,6 +6,7 @@ import * as tar from 'tar-stream';
 export type RegistryPackageVersion = {
   version: string;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
 export type RegistryPackage = {
@@ -46,6 +47,7 @@ async function createTarball(name: string, version: RegistryPackageVersion) {
     version: version.version,
     main: `index.js`,
     dependencies: version.dependencies ?? {},
+    peerDependencies: version.peerDependencies ?? {},
   }, null, 2);
 
   pack.entry({name: `package/package.json`}, manifest);
@@ -127,6 +129,7 @@ export class MockRegistry {
           version: version.version,
           main: `index.js`,
           dependencies: version.dependencies ?? {},
+          peerDependencies: version.peerDependencies ?? {},
           dist: {
             tarball: `${this.url}/tarballs/${pkg.name}-${version.version}.tgz`,
             shasum: tarball.shasum,
