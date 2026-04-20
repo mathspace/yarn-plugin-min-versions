@@ -71,6 +71,22 @@ export type EdgeAnalysis = {
   detail: string;
 };
 
+export type DependencyPathStep = {
+  parent: Locator;
+  dependency: Descriptor;
+  child: Locator;
+};
+
+export type DependencyPath = {
+  workspace: Locator;
+  steps: Array<DependencyPathStep>;
+};
+
+export type DependencyPathSearchResult = {
+  paths: Array<DependencyPath>;
+  truncated: boolean;
+};
+
 export type FloorAnalysis = {
   floor: MinVersionFloor;
   matchingPackages: Array<Package>;

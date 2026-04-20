@@ -55,7 +55,10 @@ The plugin ships two commands:
 satisfies every configured floor.
 
 `explain` shows the configured floor, the currently resolved package instances,
-and the dependency edges that are relevant to that package.
+the dependency edges that are relevant to that package, and up to three
+workspace ancestry paths that show how each transitive parent package is
+introduced by the current install state. When the graph is dense, additional
+paths may exist but not be shown.
 
 ## Supported Scope
 

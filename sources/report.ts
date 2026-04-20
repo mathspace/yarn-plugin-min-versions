@@ -3,7 +3,7 @@ import * as semver from 'semver';
 import {MIN_VERSION_PROTOCOL} from './constants';
 import {assertValidPolicy} from './policy';
 import {describeDependencySupport, evaluateRangeFloor} from './range';
-import type {EdgeAnalysis, FloorAnalysis, MinVersionsPolicy} from './types';
+import type {DependencyPath, DependencyPathSearchResult, DependencyPathStep, EdgeAnalysis, FloorAnalysis, MinVersionsPolicy} from './types';
 
 function compareLocators(left: Locator, right: Locator) {
   return structUtils.stringifyLocator(left).localeCompare(structUtils.stringifyLocator(right));
@@ -11,6 +11,14 @@ function compareLocators(left: Locator, right: Locator) {
 
 function compareDescriptors(left: Descriptor, right: Descriptor) {
   return structUtils.stringifyDescriptor(left).localeCompare(structUtils.stringifyDescriptor(right));
+}
+
+function comparePathSteps(left: DependencyPathStep, right: DependencyPathStep) {
+  const parentOrder = compareLocators(left.parent, right.parent);
+  if (parentOrder !== 0)
+    return parentOrder;
+
+  return compareDescriptors(left.dependency, right.dependency);
 }
 
 function summarizePackage(locator: Locator) {
@@ -38,6 +46,92 @@ function sortEdges(edges: Array<EdgeAnalysis>) {
 
     return compareDescriptors(left.dependency, right.dependency);
   });
+}
+
+function buildReverseDependencyGraph(project: Project) {
+  const reverseGraph = new Map<string, Array<DependencyPathStep>>();
+
+  for (const parent of sortPackages(project.storedPackages.values())) {
+    for (const dependency of miscUtils.sortMap(parent.dependencies.values(), descriptor => structUtils.stringifyDescriptor(descriptor))) {
+      const resolution = project.storedResolutions.get(dependency.descriptorHash);
+      if (typeof resolution === `undefined`)
+        continue;
+
+      const child = project.storedPackages.get(resolution);
+      if (typeof child === `undefined`)
+        continue;
+
+      const steps = reverseGraph.get(child.locatorHash) ?? [];
+      steps.push({parent, dependency, child});
+      reverseGraph.set(child.locatorHash, steps);
+    }
+  }
+
+  for (const steps of reverseGraph.values())
+    steps.sort(comparePathSteps);
+
+  return reverseGraph;
+}
+
+export function createIntroducerPathFinder(project: Project, rootWorkspace: Locator) {
+  const reverseGraph = buildReverseDependencyGraph(project);
+
+  return (target: Locator, {maxPaths = 3, maxExpansions = 5000}: {maxPaths?: number; maxExpansions?: number} = {}): DependencyPathSearchResult => {
+    const queue: Array<{
+      locator: Locator;
+      reversedSteps: Array<DependencyPathStep>;
+      visited: Set<string>;
+    }> = [{
+      locator: target,
+      reversedSteps: [],
+      visited: new Set([target.locatorHash]),
+    }];
+
+    const paths: Array<DependencyPath> = [];
+    const seenPaths = new Set<string>();
+    let expansions = 0;
+
+    while (queue.length > 0 && paths.length < maxPaths && expansions < maxExpansions) {
+      const current = queue.shift();
+      if (typeof current === `undefined`)
+        break;
+
+      expansions += 1;
+
+      if (current.locator.locatorHash === rootWorkspace.locatorHash) {
+        const steps = [...current.reversedSteps].reverse();
+        const pathKey = steps.length === 0
+          ? current.locator.locatorHash
+          : steps.map(step => `${step.parent.locatorHash}:${step.dependency.descriptorHash}:${step.child.locatorHash}`).join(`|`);
+
+        if (!seenPaths.has(pathKey)) {
+          seenPaths.add(pathKey);
+          paths.push({
+            workspace: current.locator,
+            steps,
+          });
+        }
+
+        continue;
+      }
+
+      for (const step of reverseGraph.get(current.locator.locatorHash) ?? []) {
+        if (current.visited.has(step.parent.locatorHash))
+          continue;
+
+        queue.push({
+          locator: step.parent,
+          reversedSteps: [...current.reversedSteps, step],
+          visited: new Set(current.visited).add(step.parent.locatorHash),
+        });
+      }
+    }
+
+    return {
+      paths,
+      truncated: queue.length > 0,
+    };
+  };
 }
 
 export function analyzeProject(project: Project): Array<FloorAnalysis> {

@@ -1,4 +1,4 @@
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import * as path from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
@@ -49,6 +49,50 @@ const packageFixtures = [
         version: `1.0.0`,
         dependencies: {
           dep: `^1.5.0`,
+        },
+      },
+    ],
+  },
+  {
+    name: `mid`,
+    versions: [
+      {
+        version: `1.0.0`,
+        dependencies: {
+          foo: `1.0.0`,
+        },
+      },
+    ],
+  },
+  {
+    name: `alt-mid`,
+    versions: [
+      {
+        version: `1.0.0`,
+        dependencies: {
+          foo: `1.0.0`,
+        },
+      },
+    ],
+  },
+  {
+    name: `extra-mid`,
+    versions: [
+      {
+        version: `1.0.0`,
+        dependencies: {
+          foo: `1.0.0`,
+        },
+      },
+    ],
+  },
+  {
+    name: `last-mid`,
+    versions: [
+      {
+        version: `1.0.0`,
+        dependencies: {
+          foo: `1.0.0`,
         },
       },
     ],
@@ -106,6 +150,12 @@ async function createProject(registry: MockRegistry, packageJson: Record<string,
   ].join(`\n`));
 
   return tempRoot;
+}
+
+async function writeWorkspacePackage(root: string, relativePath: string, packageJson: Record<string, unknown>) {
+  const workspaceDir = path.join(root, relativePath);
+  await mkdir(workspaceDir, {recursive: true});
+  await writeFile(path.join(workspaceDir, `package.json`), `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
 async function runYarn(projectCwd: string, args: Array<string>) {
@@ -273,6 +323,146 @@ describe(`yarn-plugin-min-versions`, () => {
       expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
       expect(explain.stdout).toContain(`peer-dep@virtual:`);
       expect(explain.stdout).toContain(`[satisfied]`);
+    } finally {
+      await registry.stop();
+    }
+  });
+
+  test(`explain shows the workspace introduction path for transitive conflicts`, async () => {
+    const registry = new MockRegistry(packageFixtures);
+    await registry.start();
+    try {
+      const project = await createProject(registry, {
+        dependencies: {
+          mid: `1.0.0`,
+        },
+      });
+
+      const initialInstall = await runYarn(project, [`install`]);
+      expect(initialInstall.code, `${initialInstall.stdout}\n${initialInstall.stderr}`).toBe(0);
+
+      await writeFile(path.join(project, `package.json`), `${JSON.stringify({
+        name: `fixture-project`,
+        version: `1.0.0`,
+        private: true,
+        packageManager: `yarn@4.14.1`,
+        dependencies: {
+          mid: `1.0.0`,
+        },
+        minVersions: {
+          dep: `2.0.0`,
+        },
+      }, null, 2)}\n`);
+
+      const explain = await runYarn(project, [`min-versions`, `explain`, `dep`]);
+      expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
+      expect(explain.stdout).toContain(`- [conflict] foo@npm:1.0.0`);
+      expect(explain.stdout).toContain(`-> dep@npm:^1.0.0`);
+      expect(explain.stdout).toContain(`  introduced by:`);
+      expect(explain.stdout).toContain(`  - fixture-project@workspace:. -> mid@npm:1.0.0`);
+      expect(explain.stdout).toContain(`-> foo@npm:1.0.0`);
+    } finally {
+      await registry.stop();
+    }
+  });
+
+  test(`explain reports when additional introduction paths are omitted`, async () => {
+    const registry = new MockRegistry(packageFixtures);
+    await registry.start();
+    try {
+      const project = await createProject(registry, {
+        dependencies: {
+          'alt-mid': `1.0.0`,
+          'extra-mid': `1.0.0`,
+          'last-mid': `1.0.0`,
+          mid: `1.0.0`,
+        },
+      });
+
+      const initialInstall = await runYarn(project, [`install`]);
+      expect(initialInstall.code, `${initialInstall.stdout}\n${initialInstall.stderr}`).toBe(0);
+
+      await writeFile(path.join(project, `package.json`), `${JSON.stringify({
+        name: `fixture-project`,
+        version: `1.0.0`,
+        private: true,
+        packageManager: `yarn@4.14.1`,
+        dependencies: {
+          'alt-mid': `1.0.0`,
+          'extra-mid': `1.0.0`,
+          'last-mid': `1.0.0`,
+          mid: `1.0.0`,
+        },
+        minVersions: {
+          dep: `2.0.0`,
+        },
+      }, null, 2)}\n`);
+
+      const explain = await runYarn(project, [`min-versions`, `explain`, `dep`]);
+      expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
+      expect(explain.stdout).toContain(`  - fixture-project@workspace:. -> alt-mid@npm:1.0.0`);
+      expect(explain.stdout).toContain(`  - fixture-project@workspace:. -> extra-mid@npm:1.0.0`);
+      expect(explain.stdout).toContain(`  - fixture-project@workspace:. -> last-mid@npm:1.0.0`);
+      expect(explain.stdout).toContain(`  - additional introduction paths may exist but were not shown`);
+    } finally {
+      await registry.stop();
+    }
+  });
+
+  test(`explain follows workspace-to-workspace ancestry back to the current workspace`, async () => {
+    const registry = new MockRegistry(packageFixtures);
+    await registry.start();
+    try {
+      const project = await createProject(registry, {
+        private: true,
+        workspaces: [`packages/*`],
+        dependencies: {
+          app: `workspace:*`,
+        },
+      });
+
+      await writeWorkspacePackage(project, `packages/app`, {
+        name: `app`,
+        version: `1.0.0`,
+        dependencies: {
+          shared: `workspace:*`,
+        },
+      });
+
+      await writeWorkspacePackage(project, `packages/shared`, {
+        name: `shared`,
+        version: `1.0.0`,
+        dependencies: {
+          foo: `1.0.0`,
+        },
+      });
+
+      const initialInstall = await runYarn(project, [`install`]);
+      expect(initialInstall.code, `${initialInstall.stdout}\n${initialInstall.stderr}`).toBe(0);
+
+      await writeFile(path.join(project, `package.json`), `${JSON.stringify({
+        name: `fixture-project`,
+        version: `1.0.0`,
+        private: true,
+        packageManager: `yarn@4.14.1`,
+        workspaces: [`packages/*`],
+        dependencies: {
+          app: `workspace:*`,
+        },
+        minVersions: {
+          dep: `2.0.0`,
+        },
+      }, null, 2)}\n`);
+
+      const explain = await runYarn(project, [`min-versions`, `explain`, `dep`]);
+      expect(explain.code, `${explain.stdout}\n${explain.stderr}`).toBe(0);
+      expect(explain.stdout).toContain(`  - fixture-project@workspace:. -> app@workspace:packages/app -> shared@workspace:packages/shared`);
+      expect(explain.stdout).toContain(`-> foo@npm:1.0.0`);
+
+      const nestedExplain = await runYarn(path.join(project, `packages`, `app`), [`min-versions`, `explain`, `dep`]);
+      expect(nestedExplain.code, `${nestedExplain.stdout}\n${nestedExplain.stderr}`).toBe(0);
+      expect(nestedExplain.stdout).toContain(`  - app@workspace:packages/app -> shared@workspace:packages/shared -> foo@npm:1.0.0`);
+      expect(nestedExplain.stdout).not.toContain(`fixture-project@workspace:. -> app@workspace:packages/app -> shared@workspace:packages/shared -> foo@npm:1.0.0`);
     } finally {
       await registry.stop();
     }
