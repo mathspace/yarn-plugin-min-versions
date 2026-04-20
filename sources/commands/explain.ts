@@ -5,10 +5,14 @@ import {assertValidPolicy, inspectPolicy} from '../policy';
 import {analyzeProject, createIntroducerPathFinder} from '../report';
 import {reportCommandError} from './reportUtils';
 
+function formatIntroducerLocator(locator: import('@yarnpkg/core').Locator) {
+  return structUtils.stringifyLocator(structUtils.ensureDevirtualizedLocator(locator));
+}
+
 function formatIntroducerPath(path: import('../types').DependencyPath) {
   return [
-    structUtils.stringifyLocator(path.workspace),
-    ...path.steps.map(step => structUtils.stringifyLocator(step.child)),
+    formatIntroducerLocator(path.workspace),
+    ...path.steps.map(step => formatIntroducerLocator(step.child)),
   ].join(` -> `);
 }
 
