@@ -78,6 +78,9 @@ Not supported in v1:
 
 ## Build And Test
 
+Use Node.js 24 for building and testing; Vitest 5 requires Node.js
+`^22.12.0 || ^24.0.0 || >=26.0.0`. The bundled plugin supports Node.js 20 or newer.
+
 ```sh
 npm install
 npm run build
