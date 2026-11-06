@@ -27,6 +27,13 @@ This model uses the repository’s own source and generic host/caller obligation
 
 Consumers must authenticate the plugin bundle and maintain root policy; no particular downstream CI or registry privilege is assumed. Policy root-only enforcement and root-resolution precedence are distinct controls; resolutions are not silently treated as subordinate to floors. Release upload uses --clobber, so tag identity alone does not prove an immutable asset digest.
 
+The npm dependency graph retains minimatch 9.0.9 for compatibility with glob 10.
+Its CommonJS and ESM implementations receive the upstream CVE-2026-118764
+preprocessing limits through `patch-package` during `npm ci`. Install scripts
+must remain enabled; skipping them leaves the dependency unpatched. Regression
+tests check the limits and the glob, rimraf and TUF consumers. See
+`patches/README.md` for provenance and removal criteria.
+
 ## Attack Surface, Mitigations, and Attacker Stories
 
 These are prioritized hypotheses for investigation, not validated findings. Priority reflects plausible capability gain; each prerequisite must hold before assigning a deployment-specific severity.
@@ -52,4 +59,4 @@ Confidence in the source-described data flow is separate from confidence in expl
 
 Repository: github.com/mathspace/yarn-plugin-min-versions
 
-Version: ad1ab012feabbb688b1faa1410402c6786fd54ce
+Version: eed6c0786b9644f4f4d2c684bc7d290450ff72da (reviewed source snapshot)
